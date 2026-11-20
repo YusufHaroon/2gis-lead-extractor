@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     enable_live_collector: bool = False
     max_results_cap: int = 200
     collector_timeout_seconds: int = 120
+    max_concurrent_jobs: int = 3
     cors_origins: str = "http://localhost:3000"
 
     @property

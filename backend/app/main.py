@@ -1,11 +1,22 @@
 """FastAPI application entry point."""
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.api.routes import health, jobs
+from app.services import job_manager
 
-app = FastAPI(title="2GIS Business Lead Extractor")
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    yield
+    # Cancel running collections cleanly (closes any open browsers) on shutdown.
+    await job_manager.shutdown()
+
+
+app = FastAPI(title="2GIS Business Lead Extractor", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
