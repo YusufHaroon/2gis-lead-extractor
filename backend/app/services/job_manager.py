@@ -16,7 +16,7 @@ from contextlib import aclosing
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-from app.collectors.base import BaseCollector
+from app.collectors.base import BaseCollector, CollectorError
 from app.collectors.registry import get_collector
 from app.config import settings
 from app.models.schemas import BusinessRecord, JobCreate, JobInfo, JobStatus
@@ -170,6 +170,9 @@ async def _run(job: Job) -> None:
             f"Search timed out after {settings.collector_timeout_seconds} seconds. "
             f"{len(job.records)} result(s) were collected before the timeout.",
         )
+    except CollectorError as exc:
+        logger.warning("Job %s: collector %s reported: %s", job.id, job.collector.name, exc)
+        job.finish(JobStatus.FAILED, str(exc))
     except Exception:
         logger.exception("Job %s failed (collector=%s)", job.id, job.collector.name)
         job.finish(

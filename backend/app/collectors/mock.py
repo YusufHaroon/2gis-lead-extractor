@@ -47,9 +47,11 @@ class MockCollector(BaseCollector):
                 )
 
     async def collect(self, category, location, max_results):
-        for count, listing in enumerate(self._listings(category, location)):
-            if count >= max_results:
+        seen_ids: set[str] = set()  # max_results counts distinct businesses, not raw listings
+        for listing in self._listings(category, location):
+            if len(seen_ids) >= max_results:
                 return
             if self.delay_seconds:
                 await asyncio.sleep(self.delay_seconds)
+            seen_ids.add(listing.source_id)
             yield listing

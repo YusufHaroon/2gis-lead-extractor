@@ -1,7 +1,11 @@
 """Pydantic request/response models."""
 from enum import Enum
+from typing import Annotated
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StringConstraints
+
+# Trimmed before length checks, so whitespace-only input is rejected.
+SearchText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
 
 
 class JobStatus(str, Enum):
@@ -13,10 +17,10 @@ class JobStatus(str, Enum):
 
 
 class JobCreate(BaseModel):
-    category: str = Field(min_length=1, max_length=100)
-    location: str = Field(min_length=1, max_length=100)
-    max_results: int | None = Field(default=None, ge=1)
-    source: str | None = None
+    category: SearchText
+    location: SearchText
+    max_results: int | None = Field(default=None, ge=1)  # clamped to MAX_RESULTS_CAP server-side
+    source: str | None = Field(default=None, max_length=50)
 
 
 class BusinessRecord(BaseModel):
