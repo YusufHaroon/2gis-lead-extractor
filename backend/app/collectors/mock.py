@@ -14,6 +14,7 @@ POOL_SIZE = 25  # unique placeholder businesses available per search
 
 class MockCollector(BaseCollector):
     name = "mock"
+    label = "Mock data (placeholder)"
     export_allowed = True
     delay_seconds: float = 0.2  # simulated latency per listing so progress is visible in the UI
 

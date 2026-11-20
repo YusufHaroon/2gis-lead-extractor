@@ -218,3 +218,134 @@ def test_local_fixture_job_can_be_cancelled(client):
     client.post(f"/api/jobs/{job_id}/cancel")
     info = wait_until_done(client, job_id, timeout=60)
     assert info["status"] in {"cancelled", "completed"}  # it may finish before the cancel lands
+
+
+# --- sources ---------------------------------------------------------------
+
+def test_sources_lists_all_with_flags(client, monkeypatch):
+    monkeypatch.setattr(settings, "enable_live_collector", False)
+    monkeypatch.setattr(settings, "default_collector", "mock")
+    sources = {s["name"]: s for s in client.get("/api/sources").json()}
+    assert set(sources) == {"mock", "local_fixture", "twogis"}
+    assert sources["mock"] == {
+        "name": "mock", "label": "Mock data (placeholder)",
+        "enabled": True, "export_allowed": True, "is_default": True,
+    }
+    assert sources["twogis"]["enabled"] is False
+    assert sources["twogis"]["export_allowed"] is True  # export rights confirmed by the owner
+
+
+def test_sources_reflect_live_switch(client, monkeypatch):
+    monkeypatch.setattr(settings, "enable_live_collector", True)
+    monkeypatch.setattr(settings, "twogis_api_key", "test-key")
+    sources = {s["name"]: s for s in client.get("/api/sources").json()}
+    assert sources["twogis"]["enabled"] is True
+
+
+def test_live_source_hidden_without_api_key(client, monkeypatch):
+    # Switched on but no key configured -> still unavailable.
+    monkeypatch.setattr(settings, "enable_live_collector", True)
+    monkeypatch.setattr(settings, "twogis_api_key", "")
+    sources = {s["name"]: s for s in client.get("/api/sources").json()}
+    assert sources["twogis"]["enabled"] is False
+    assert start(client, source="twogis").status_code == 403
+
+
+# --- QA: empty, timeout and live-export acceptance cases (spec Phase 5) ----
+
+@pytest.mark.playwright
+def test_empty_results_complete_with_header_only_export(client, tmp_path, monkeypatch):
+    from app.collectors import local_fixture
+
+    empty = tmp_path / "empty.html"
+    empty.write_text('<ul id="listings"></ul>')
+    monkeypatch.setattr(local_fixture, "START_PAGE", empty)
+
+    job_id = start(client, source="local_fixture").json()["job_id"]
+    info = wait_until_done(client, job_id, timeout=60)
+    assert info["status"] == "completed"
+    assert info["collected"] == 0
+    assert client.get(f"/api/jobs/{job_id}/results").json() == []
+
+    ws = load_workbook(io.BytesIO(client.get(f"/api/jobs/{job_id}/export").content)).active
+    assert [c.value for c in ws[1]] == ["Business Name", "Phone Number"]
+    assert ws.max_row == 1
+
+
+@pytest.mark.playwright
+def test_layout_change_fails_job_with_clear_message(client, tmp_path, monkeypatch):
+    from app.collectors import local_fixture
+
+    changed = tmp_path / "changed.html"
+    changed.write_text("<div class='redesigned'></div>")
+    monkeypatch.setattr(local_fixture, "START_PAGE", changed)
+    monkeypatch.setattr(local_fixture, "SELECTOR_TIMEOUT_MS", 300)
+
+    info = wait_until_done(client, start(client, source="local_fixture").json()["job_id"], timeout=60)
+    assert info["status"] == "failed"
+    assert "layout was not recognised" in info["error"]
+
+
+def test_timeout_fails_job_keeps_partial_results_and_blocks_export(client, monkeypatch):
+    monkeypatch.setattr(MockCollector, "delay_seconds", 0.1)
+    monkeypatch.setattr(settings, "collector_timeout_seconds", 0.5)
+
+    job_id = start(client).json()["job_id"]
+    info = wait_until_done(client, job_id)
+    assert info["status"] == "failed"
+    assert "timed out" in info["error"]
+    assert 0 < info["collected"] < POOL_SIZE
+    assert len(client.get(f"/api/jobs/{job_id}/results").json()) == info["collected"]
+    assert client.get(f"/api/jobs/{job_id}/export").status_code == 409
+
+
+def test_live_source_end_to_end_with_authorized_export(client, monkeypatch):
+    """Live 2GIS (collection + export both authorized): job completes and Excel export works."""
+    from app.collectors.base import RawListing
+    from app.collectors.twogis import TwoGisCollector
+
+    async def fake_collect(self, category, location, max_results):
+        yield RawListing(name="Ocean Basket", phones=["+971 4 000 0001"], source_id="1")
+        yield RawListing(name="Deccan Delight", phones=[], source_id="2")
+
+    monkeypatch.setattr(settings, "enable_live_collector", True)
+    monkeypatch.setattr(settings, "twogis_api_key", "test-key")
+    monkeypatch.setattr(TwoGisCollector, "collect", fake_collect)
+
+    created = start(client, source="twogis").json()
+    assert created["export_allowed"] is True
+    info = wait_until_done(client, created["job_id"])
+    assert info["status"] == "completed" and info["collected"] == 2
+
+    r = client.get(f"/api/jobs/{created['job_id']}/export")
+    assert r.status_code == 200
+    ws = load_workbook(io.BytesIO(r.content)).active
+    assert [c.value for c in ws[1]] == ["Business Name", "Phone Number"]
+    assert list(ws.iter_rows(min_row=2, values_only=True)) == [
+        ("Ocean Basket", "+971 4 000 0001"),
+        ("Deccan Delight", None),
+    ]
+
+
+def test_live_source_export_rights_are_granted():
+    from app.collectors.twogis import TwoGisCollector
+
+    assert TwoGisCollector.export_allowed is True
+
+
+def test_live_source_misconfigured_fails_cleanly(client, monkeypatch):
+    # Enabled with a key in the registry's eyes, but the collector sees no key at run time.
+    from app.collectors.twogis import TwoGisCollector
+
+    monkeypatch.setattr(settings, "enable_live_collector", True)
+    monkeypatch.setattr(settings, "twogis_api_key", "present-for-registry")
+
+    def no_key_init(self, *a, **k):
+        self.api_key = ""
+        self.base_url = "https://example.invalid"
+        self.region_id = ""
+
+    monkeypatch.setattr(TwoGisCollector, "__init__", no_key_init)
+    info = wait_until_done(client, start(client, source="twogis").json()["job_id"])
+    assert info["status"] == "failed"
+    assert "not configured" in info["error"]

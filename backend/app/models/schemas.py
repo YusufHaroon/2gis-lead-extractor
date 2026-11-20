@@ -35,3 +35,11 @@ class JobInfo(BaseModel):
     total_expected: int | None = None
     export_allowed: bool = False
     error: str | None = None
+
+
+class SourceInfo(BaseModel):
+    name: str
+    label: str
+    enabled: bool
+    export_allowed: bool
+    is_default: bool

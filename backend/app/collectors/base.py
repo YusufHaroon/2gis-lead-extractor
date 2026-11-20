@@ -20,6 +20,7 @@ class CollectorError(Exception):
 
 class BaseCollector(ABC):
     name: str = "base"
+    label: str = "Base"  # human-readable name shown in the dashboard
     export_allowed: bool = False  # whether the source licence permits Excel export
 
     @abstractmethod

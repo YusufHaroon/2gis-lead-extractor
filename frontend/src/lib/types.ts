@@ -1,5 +1,7 @@
 export type JobStatus = "idle" | "running" | "completed" | "failed" | "cancelled";
 
+export const TERMINAL_STATUSES: ReadonlySet<JobStatus> = new Set(["completed", "failed", "cancelled"]);
+
 export interface JobCreate {
   category: string;
   location: string;
@@ -19,4 +21,18 @@ export interface JobInfo {
 export interface BusinessRecord {
   business_name: string;
   phone_number: string | null;
+}
+
+export interface SourceInfo {
+  name: string;
+  label: string;
+  enabled: boolean;
+  export_allowed: boolean;
+  is_default: boolean;
+}
+
+/** The search as submitted, used for user-facing messages. */
+export interface SearchQuery {
+  category: string;
+  location: string;
 }

@@ -48,6 +48,7 @@ SELECTOR_TIMEOUT_MS = 5_000
 
 class LocalFixtureCollector(BaseCollector):
     name = "local_fixture"
+    label = "Local test page (Playwright)"
     export_allowed = True
 
     def __init__(self, start_url: str | None = None, headless: bool = True):

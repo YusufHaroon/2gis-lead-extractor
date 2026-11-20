@@ -1,11 +1,24 @@
+# docker compose up --build   ->  dashboard: http://localhost:3000   API docs: http://localhost:8000/docs
 services:
   backend:
     build: ./backend
     ports: ["8000:8000"]
-    env_file: ./backend/.env
-  frontend:
-    build: ./frontend
-    ports: ["3000:3000"]
+    env_file:
+      - path: ./backend/.env      # optional; copy backend/.env.example to customise
+        required: false
     environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8000
-    depends_on: [backend]
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+    shm_size: "1gb"               # Chromium needs more shared memory than Docker's 64 MB default
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # Baked into the browser bundle at build time; must be reachable from the user's browser.
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    ports: ["3000:3000"]
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
