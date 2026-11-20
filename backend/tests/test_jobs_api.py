@@ -7,6 +7,7 @@ from openpyxl import load_workbook
 
 from app.collectors.mock import POOL_SIZE, MockCollector
 from app.config import settings
+from app.services.exporter import HEADERS
 
 TERMINAL = {"completed", "failed", "cancelled"}
 
@@ -55,7 +56,7 @@ def test_full_job_lifecycle(client):
 
     results = client.get(f"/api/jobs/{created['job_id']}/results").json()
     assert len(results) == POOL_SIZE
-    assert set(results[0]) == {"business_name", "phone_number"}
+    assert set(results[0]) == {"business_name", "phone_number", "address", "category", "opening_hours"}
     assert any(r["phone_number"] is None for r in results)
 
     export = client.get(f"/api/jobs/{created['job_id']}/export")
@@ -66,8 +67,8 @@ def test_full_job_lifecycle(client):
     assert 'filename="leads-restaurants-dubai.xlsx"' in export.headers["content-disposition"]
 
     ws = load_workbook(io.BytesIO(export.content)).active
-    assert [c.value for c in ws[1]] == ["Business Name", "Phone Number"]
-    assert ws.max_column == 2
+    assert [c.value for c in ws[1]] == list(HEADERS)
+    assert ws.max_column == 5
     assert ws.max_row == POOL_SIZE + 1
 
 
@@ -206,10 +207,11 @@ def test_local_fixture_job_end_to_end(client):
     assert info["collected"] == 6
 
     results = client.get(f"/api/jobs/{info['job_id']}/results").json()
-    assert results[1] == {"business_name": "Example Business B", "phone_number": None}
+    assert results[1] == {"business_name": "Example Business B", "phone_number": None,
+                          "address": None, "category": None, "opening_hours": None}
 
     ws = load_workbook(io.BytesIO(client.get(f"/api/jobs/{info['job_id']}/export").content)).active
-    assert ws.max_row == 7 and ws.max_column == 2
+    assert ws.max_row == 7 and ws.max_column == 5
 
 
 @pytest.mark.playwright
@@ -268,7 +270,7 @@ def test_empty_results_complete_with_header_only_export(client, tmp_path, monkey
     assert client.get(f"/api/jobs/{job_id}/results").json() == []
 
     ws = load_workbook(io.BytesIO(client.get(f"/api/jobs/{job_id}/export").content)).active
-    assert [c.value for c in ws[1]] == ["Business Name", "Phone Number"]
+    assert [c.value for c in ws[1]] == list(HEADERS)
     assert ws.max_row == 1
 
 
@@ -305,7 +307,8 @@ def test_live_source_end_to_end_with_authorized_export(client, monkeypatch):
     from app.collectors.twogis import TwoGisCollector
 
     async def fake_collect(self, category, location, max_results):
-        yield RawListing(name="Ocean Basket", phones=["+971 4 000 0001"], source_id="1")
+        yield RawListing(name="Ocean Basket", phones=["+971 4 000 0001"], source_id="1",
+                         address="Ibn Battuta Mall", category="Restaurants", opening_hours="Open 24/7")
         yield RawListing(name="Deccan Delight", phones=[], source_id="2")
 
     monkeypatch.setattr(settings, "enable_live_collector", True)
@@ -320,10 +323,10 @@ def test_live_source_end_to_end_with_authorized_export(client, monkeypatch):
     r = client.get(f"/api/jobs/{created['job_id']}/export")
     assert r.status_code == 200
     ws = load_workbook(io.BytesIO(r.content)).active
-    assert [c.value for c in ws[1]] == ["Business Name", "Phone Number"]
+    assert [c.value for c in ws[1]] == list(HEADERS)
     assert list(ws.iter_rows(min_row=2, values_only=True)) == [
-        ("Ocean Basket", "+971 4 000 0001"),
-        ("Deccan Delight", None),
+        ("Ocean Basket", "+971 4 000 0001", "Ibn Battuta Mall", "Restaurants", "Open 24/7"),
+        ("Deccan Delight", None, None, None, None),
     ]
 
 

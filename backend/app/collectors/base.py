@@ -11,6 +11,10 @@ class RawListing:
     phones: list[str] = field(default_factory=list)
     source_id: str | None = None
     location: str | None = None
+    # Optional extra detail; sources that don't provide a field leave it None.
+    address: str | None = None
+    category: str | None = None
+    opening_hours: str | None = None
 
 
 class CollectorError(Exception):

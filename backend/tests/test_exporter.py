@@ -11,24 +11,30 @@ def _load(records):
     return load_workbook(io.BytesIO(build_workbook(records))).active
 
 
-def test_headers_exact_and_two_columns_only():
+EXPECTED_HEADERS = ["Business Name", "Phone Number", "Address", "Category", "Opening Hours"]
+
+
+def test_headers_exact_and_column_order():
     ws = _load([BusinessRecord(business_name="Example Business A", phone_number="+971 4 000 0001")])
-    assert [c.value for c in ws[1]] == ["Business Name", "Phone Number"]
+    assert [c.value for c in ws[1]] == EXPECTED_HEADERS
     assert tuple(c.value for c in ws[1]) == HEADERS
-    assert ws.max_column == 2
+    assert ws.max_column == len(EXPECTED_HEADERS)
 
 
-def test_one_row_per_business_and_blank_phone_preserved():
+def test_one_row_per_business_all_columns_and_blanks_preserved():
     ws = _load([
-        BusinessRecord(business_name="Example Business A", phone_number="+971 4 000 0001"),
-        BusinessRecord(business_name="Example Business B", phone_number=None),
-        BusinessRecord(business_name="Example Business C", phone_number="+971 4 000 0003"),
+        BusinessRecord(business_name="Example Business A", phone_number="+971 4 000 0001",
+                       address="1 Example St", category="Restaurants", opening_hours="Mon-Sun 09:00-22:00"),
+        BusinessRecord(business_name="Example Business B", phone_number=None,
+                       address="2 Example St", category="Clinics", opening_hours=None),
+        BusinessRecord(business_name="Example Business C", phone_number="+971 4 000 0003",
+                       address=None, category=None, opening_hours="Open 24/7"),
     ])
     rows = list(ws.iter_rows(min_row=2, values_only=True))
     assert rows == [
-        ("Example Business A", "+971 4 000 0001"),
-        ("Example Business B", None),
-        ("Example Business C", "+971 4 000 0003"),
+        ("Example Business A", "+971 4 000 0001", "1 Example St", "Restaurants", "Mon-Sun 09:00-22:00"),
+        ("Example Business B", None, "2 Example St", "Clinics", None),
+        ("Example Business C", "+971 4 000 0003", None, None, "Open 24/7"),
     ]
 
 

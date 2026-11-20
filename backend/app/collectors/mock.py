@@ -32,11 +32,16 @@ class MockCollector(BaseCollector):
                 phones = [f"+971 4 000 {i:04d}", f"+971 4 999 {i:04d}"]  # only the first is kept
             else:
                 phones = [f"+971 4 000 {i:04d}"]
+            where = f" in {location}" if location else ""
             yield RawListing(
                 name=f"Example {category} {i}",
                 phones=phones,
                 source_id=f"mock-{i}",
                 location=location,
+                address=f"{i} Example Street, {location}" if location else f"{i} Example Street",
+                category=category,
+                # Vary hours so the column isn't uniform; a few have none.
+                opening_hours=None if i % 6 == 0 else ("Open 24/7" if i % 3 == 0 else "Mon-Sun 09:00-22:00"),
             )
             if i == 3:
                 # Same business seen twice (e.g. on two result pages) -> removed by dedupe.
@@ -45,6 +50,9 @@ class MockCollector(BaseCollector):
                     phones=["+971 4 000 0001"],
                     source_id="mock-1",
                     location=location,
+                    address=f"1 Example Street{where}",
+                    category=category,
+                    opening_hours="Mon-Sun 09:00-22:00",
                 )
 
     async def collect(self, category, location, max_results):

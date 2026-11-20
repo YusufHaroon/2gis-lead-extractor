@@ -9,7 +9,16 @@ from openpyxl.styles import Font
 
 from app.models.schemas import BusinessRecord
 
-HEADERS = ("Business Name", "Phone Number")
+# Single source of truth for the exported columns: (header, BusinessRecord attribute).
+# The results table on the frontend mirrors this order.
+COLUMNS: tuple[tuple[str, str], ...] = (
+    ("Business Name", "business_name"),
+    ("Phone Number", "phone_number"),
+    ("Address", "address"),
+    ("Category", "category"),
+    ("Opening Hours", "opening_hours"),
+)
+HEADERS = tuple(header for header, _ in COLUMNS)
 SHEET_TITLE = "Leads"
 XLSX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
@@ -41,16 +50,16 @@ def build_workbook(records: Iterable[BusinessRecord]) -> bytes:
 
     widths = [len(h) for h in HEADERS]
     for row_idx, record in enumerate(records, start=2):
-        for col_idx, value in enumerate((record.business_name, record.phone_number), start=1):
-            value = _text(value)
+        for col_idx, (_, attr) in enumerate(COLUMNS, start=1):
+            value = _text(getattr(record, attr))
             if value is None:
                 continue  # leave the cell truly empty
             cell = ws.cell(row=row_idx, column=col_idx, value=value)
             cell.data_type = "s"
             widths[col_idx - 1] = max(widths[col_idx - 1], len(value))
 
-    for col_letter, width in zip("AB", widths):
-        ws.column_dimensions[col_letter].width = min(width + 2, 60)
+    for idx, width in enumerate(widths):
+        ws.column_dimensions[ws.cell(row=1, column=idx + 1).column_letter].width = min(width + 2, 60)
 
     buffer = io.BytesIO()
     wb.save(buffer)

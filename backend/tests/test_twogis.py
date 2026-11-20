@@ -158,3 +158,46 @@ def test_missing_key_fails_clearly():
 
     with pytest.raises(CollectorError, match="not configured"):
         asyncio.run(main())
+
+
+# --- extra-field mapping ---------------------------------------------------
+
+def test_maps_address_category_and_hours():
+    def handler(request):
+        if "region/list" in request.url.path:
+            return ok({"items": []})
+        if int(request.url.params.get("page", 1)) != 1:
+            return ok({"items": []})
+        item = {
+            "id": "id-1",
+            "name_ex": {"primary": "Ocean Basket"},
+            "address_name": "Ibn Battuta Mall, 1, Abraj Al Mina street",
+            "rubrics": [{"name": "Cafe / Restaurants"}],
+            "schedule": {
+                "Mon": {"working_hours": [{"from": "09:00", "to": "22:00"}]},
+                "Tue": {"working_hours": [{"from": "09:00", "to": "22:00"}]},
+                "Wed": {"working_hours": [{"from": "09:00", "to": "22:00"}]},
+                "Sat": {"working_hours": [{"from": "10:00", "to": "18:00"}]},
+            },
+        }
+        return ok({"items": [item]})
+
+    raw = run_collector(handler)
+    r = raw[0]
+    assert r.address == "Ibn Battuta Mall, 1, Abraj Al Mina street"
+    assert r.category == "Cafe / Restaurants"
+    assert r.opening_hours == "Mon-Wed 09:00-22:00; Sat 10:00-18:00"
+
+
+@pytest.mark.parametrize("schedule,expected", [
+    (None, None),
+    ({}, None),
+    ({"24x7": True}, "Open 24/7"),
+    ({"Mon": {"working_hours": [{"from": "00:00", "to": "24:00"}]}}, "Mon 00:00-24:00"),
+    ({d: {"working_hours": [{"from": "09:00", "to": "18:00"}]} for d in
+      ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]}, "Mon-Sun 09:00-18:00"),
+    ({"Mon": {"working_hours": [{"from": "09:00", "to": "13:00"}, {"from": "14:00", "to": "18:00"}]}},
+     "Mon 09:00-13:00, 14:00-18:00"),
+])
+def test_format_schedule(schedule, expected):
+    assert TwoGisCollector._format_schedule(schedule) == expected

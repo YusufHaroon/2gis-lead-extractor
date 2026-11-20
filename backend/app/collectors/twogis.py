@@ -109,7 +109,7 @@ class TwoGisCollector(BaseCollector):
             "q": query,
             "page": page,
             "page_size": PAGE_SIZE,
-            "fields": "items.contact_groups,items.name_ex,items.address",
+            "fields": "items.contact_groups,items.name_ex,items.address,items.rubrics,items.schedule",
         }
         if region_id:
             params["region_id"] = region_id
@@ -122,12 +122,60 @@ class TwoGisCollector(BaseCollector):
 
     def _to_listing(self, item: dict, location: str) -> RawListing:
         name = (item.get("name_ex") or {}).get("primary") or item.get("name") or ""
+        rubrics = item.get("rubrics") or []
+        category = next((r.get("name") for r in rubrics if r.get("name")), None)
         return RawListing(
             name=name,
             phones=self._phones(item),
             source_id=str(item["id"]) if item.get("id") is not None else None,
             location=location,
+            address=item.get("address_name") or None,
+            category=category,
+            opening_hours=self._format_schedule(item.get("schedule")),
         )
+
+    # 2GIS schedule: {"Mon": {"working_hours": [{"from": "09:00", "to": "22:00"}]}, ...},
+    # optionally with "Comment" / "24x7" keys. Rendered as compact readable text, e.g.
+    # "Mon-Fri 09:00-22:00; Sat 10:00-18:00".
+    _DAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+
+    @classmethod
+    def _format_schedule(cls, schedule: dict | None) -> str | None:
+        if not schedule:
+            return None
+        if schedule.get("24x7") or schedule.get("is_24x7"):
+            return "Open 24/7"
+
+        def day_hours(day: str) -> str | None:
+            spans = (schedule.get(day) or {}).get("working_hours") or []
+            parts = [f"{s.get('from')}-{s.get('to')}" for s in spans if s.get("from") and s.get("to")]
+            return ", ".join(parts) if parts else None
+
+        # Collapse consecutive days that share identical hours into ranges.
+        segments: list[str] = []
+        run_start: str | None = None
+        prev_day: str | None = None
+        run_hours: str | None = None
+
+        def flush() -> None:
+            if run_start and run_hours:
+                label = run_start if run_start == prev_day else f"{run_start}-{prev_day}"
+                segments.append(f"{label} {run_hours}")
+
+        for day in cls._DAYS:
+            hours = day_hours(day)
+            if hours is None:
+                flush()
+                run_start = prev_day = run_hours = None
+                continue
+            if hours == run_hours:
+                prev_day = day  # extend current run
+            else:
+                flush()
+                run_start = prev_day = day
+                run_hours = hours
+        flush()
+        return "; ".join(segments) or None
 
     @staticmethod
     def _phones(item: dict) -> list[str]:

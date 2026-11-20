@@ -72,7 +72,13 @@ class ListingCleaner:
         if key in self._seen:
             return None
         self._seen.add(key)
-        record = BusinessRecord(business_name=name, phone_number=pick_first_phone(listing.phones))
+        record = BusinessRecord(
+            business_name=name,
+            phone_number=pick_first_phone(listing.phones),
+            address=clean_text(listing.address) or None,
+            category=clean_text(listing.category) or None,
+            opening_hours=clean_text(listing.opening_hours) or None,
+        )
         self.records.append(record)
         return record
 

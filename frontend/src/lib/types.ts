@@ -21,6 +21,9 @@ export interface JobInfo {
 export interface BusinessRecord {
   business_name: string;
   phone_number: string | null;
+  address: string | null;
+  category: string | null;
+  opening_hours: string | null;
 }
 
 export interface SourceInfo {

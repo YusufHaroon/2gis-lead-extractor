@@ -26,6 +26,9 @@ class JobCreate(BaseModel):
 class BusinessRecord(BaseModel):
     business_name: str
     phone_number: str | None = None
+    address: str | None = None
+    category: str | None = None
+    opening_hours: str | None = None
 
 
 class JobInfo(BaseModel):
